@@ -222,19 +222,21 @@ async function llmRequest(prompt) {
 
 async function summarize(turns, label) {
   const conversation = turns.map(t => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`).join('\n\n');
-  const prompt = `You are a memory scribe for an AI agent. Extract key events, decisions, facts, and actions from this conversation and organize them into discrete memory entries.
+  const prompt = `You are a memory scribe for an AI agent. Extract the key facts from this conversation and organize them into 3-6 thematic memory documents. Consolidate related information — don't create separate entries for every small fact.
 
 Each entry must follow this exact format:
 TITLE: <short descriptive title, 3-8 words>
-CONTENT: <2-4 plain prose sentences. No markdown, no bullets. Just factual sentences describing what happened, was decided, or was built.>
+CONTENT: <3-8 plain prose sentences consolidating all related facts on this theme. No markdown, no bullets. Be specific and factual — include names, versions, paths, decisions, outcomes.>
 
 Separate each entry with a line containing only: ---
 
+Good themes to group by: a project or feature built, a set of related decisions, a tool or skill created/configured, a problem diagnosed and solved, a configuration change and its outcome.
+
 Rules:
-- Group related facts into one entry (e.g. all facts about one tool/decision/event)
-- Titles should be specific and searchable (e.g. "GitHub Skill Created" not "Skill Work")
-- Content should be plain prose — no markdown headers, no bullet points
-- Capture everything significant: things built, decisions made, problems solved, facts learned
+- Aim for 3-6 entries total — consolidate aggressively
+- Each entry should cover a meaningful topic, not a single micro-fact
+- Titles should be specific and searchable
+- Plain prose only — no markdown, no bullets
 - Skip small talk and filler
 
 Session: ${label}
