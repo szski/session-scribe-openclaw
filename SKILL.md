@@ -97,6 +97,7 @@ Add to crontab (`crontab -e`) to run every hour:
 | `--agent <id>` | Agent label shown in memory file headers | `agent` |
 | `--dry-run` | Print summary without writing to disk | false |
 | `--min-turns <n>` | Minimum new turns before scribing | `3` |
+| `--active-within-hours <n>` | Only scribe sessions active within this window (--all-sessions mode) | `1` |
 
 ## Pairing with supermemory
 

@@ -38,8 +38,8 @@ const model        = get('--model') || 'gpt-4o-mini';
 const agentLabel   = get('--agent') || 'agent';
 const dryRun       = has('--dry-run');
 const minTurns     = parseInt(get('--min-turns') || '3', 10);
-// Min activity: skip sessions inactive for longer than this (default 24h)
-const maxIdleHours = parseInt(get('--max-idle-hours') || '24', 10);
+// Only scribe sessions active within this window (default 1h — matches cron frequency)
+const activeWithinHours = parseFloat(get('--active-within-hours') || '1');
 
 // Provider: auto-detect from env, or explicit --provider
 const provider = get('--provider') || (process.env.OPENAI_API_KEY ? 'openai' : 'anthropic');
@@ -95,7 +95,8 @@ function resolveSessionId(dir) {
 // Returns array of { agentId, sessionId, sessionKey, lastActivity } across all agents
 function discoverAllSessions() {
   const results = [];
-  const cutoff = Date.now() - maxIdleHours * 3600 * 1000;
+  // Only sessions active within the window (since last cron run)
+  const activeSince = Date.now() - activeWithinHours * 3600 * 1000;
 
   const agentDirs = fs.readdirSync(agentsDir, { withFileTypes: true })
     .filter(e => e.isDirectory())
@@ -109,9 +110,9 @@ function discoverAllSessions() {
     for (const [key, entry] of Object.entries(sessions)) {
       if (!entry.sessionId) continue;
 
-      // Skip clearly stale sessions
+      // Only include sessions with recent activity
       const lastActivity = entry.lastActivityMs || entry.updatedAtMs || 0;
-      if (lastActivity && lastActivity < cutoff) continue;
+      if (!lastActivity || lastActivity < activeSince) continue;
 
       // Skip cron/isolated sessions — only scribe real conversations
       if (key.includes(':cron:') || key.includes(':slash:')) continue;
