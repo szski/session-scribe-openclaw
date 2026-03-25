@@ -222,36 +222,102 @@ async function llmRequest(prompt) {
 
 async function summarize(turns, label) {
   const conversation = turns.map(t => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`).join('\n\n');
-  const prompt = `You are a memory scribe for an AI agent. Extract key events, decisions, facts, and actions from this conversation excerpt. Write concise bullet points — as many as needed to capture everything significant. Focus on: things created/built, decisions made, problems solved, important facts learned, notable exchanges. Skip small talk and filler. Be specific and factual.
+  const prompt = `You are a memory scribe for an AI agent. Extract key events, decisions, facts, and actions from this conversation and organize them into discrete memory entries.
+
+Each entry must follow this exact format:
+TITLE: <short descriptive title, 3-8 words>
+CONTENT: <2-4 plain prose sentences. No markdown, no bullets. Just factual sentences describing what happened, was decided, or was built.>
+
+Separate each entry with a line containing only: ---
+
+Rules:
+- Group related facts into one entry (e.g. all facts about one tool/decision/event)
+- Titles should be specific and searchable (e.g. "GitHub Skill Created" not "Skill Work")
+- Content should be plain prose — no markdown headers, no bullet points
+- Capture everything significant: things built, decisions made, problems solved, facts learned
+- Skip small talk and filler
 
 Session: ${label}
 
 Conversation:
 ${conversation}
 
-Output ONLY bullet points starting with "- ". No headers, no preamble.`;
+Output ONLY the entries in the format above. No preamble, no summary at the end.`;
   return llmRequest(prompt);
+}
+
+// ── Parse structured memory entries ──────────────────────────────────────────
+
+function parseEntries(raw) {
+  return raw.split(/^---$/m)
+    .map(block => block.trim())
+    .filter(Boolean)
+    .map(block => {
+      const titleMatch = block.match(/^TITLE:\s*(.+)$/m);
+      const contentMatch = block.match(/^CONTENT:\s*([\s\S]+)$/m);
+      if (!titleMatch || !contentMatch) return null;
+      return {
+        title: titleMatch[1].trim(),
+        content: contentMatch[1].trim().replace(/\n+/g, ' '),
+      };
+    })
+    .filter(Boolean);
 }
 
 // ── Memory writing ────────────────────────────────────────────────────────────
 
-function appendToMemory(summary, label) {
+function appendToMemory(entries, label) {
   const date = new Date().toISOString().slice(0, 10);
   const file = path.join(memoryDir, `${date}.md`);
   const timestamp = new Date().toISOString().slice(11, 16) + ' UTC';
   const header = fs.existsSync(file) ? '' : `# ${date}\n\n`;
-  const block = `\n## Scribe [${timestamp}] ${label}\n\n${summary}\n`;
+
+  // Write as structured entries to markdown file
+  const blocks = entries.map(e => `### ${e.title}\n${e.content}`).join('\n\n');
+  const block = `\n## Scribe [${timestamp}] ${label}\n\n${blocks}\n`;
+
   fs.mkdirSync(memoryDir, { recursive: true });
   fs.appendFileSync(file, header + block);
   return file;
+}
+
+async function writeToSupermemory(entries, label) {
+  if (!process.env.SUPERMEMORY_API_KEY && !get('--api-key-file')) return 0;
+
+  // Lazy-load supermemory SDK if available
+  let Supermemory;
+  try { Supermemory = require('supermemory').default; }
+  catch { return 0; } // SDK not installed, skip
+
+  const smKey = process.env.SUPERMEMORY_API_KEY;
+  if (!smKey) return 0;
+
+  const container = get('--sm-container') || agentLabel;
+  const client = new Supermemory({ apiKey: smKey });
+  let written = 0;
+
+  for (const entry of entries) {
+    try {
+      await client.add({
+        content: entry.content,
+        containerTag: container,
+        metadata: { title: entry.title, source: 'session-scribe', session: label, date: new Date().toISOString().slice(0, 10) }
+      });
+      written++;
+      await new Promise(r => setTimeout(r, 200));
+    } catch (e) {
+      console.error(`  SM write failed for "${entry.title}": ${e.message}`);
+    }
+  }
+  return written;
 }
 
 // ── Scribe one session ────────────────────────────────────────────────────────
 
 async function scribeSession(dir, sessionId, label, state) {
   const lastIndex = state[sessionId]?.lastIndex || 0;
-  const entries = readTranscript(dir, sessionId);
-  const turns = extractTurns(entries, lastIndex);
+  const transcript = readTranscript(dir, sessionId);
+  const turns = extractTurns(transcript, lastIndex);
 
   if (turns.length < minTurns) {
     console.log(`  [${label}] ${turns.length} new turns — skipping (min: ${minTurns})`);
@@ -259,16 +325,25 @@ async function scribeSession(dir, sessionId, label, state) {
   }
 
   console.log(`  [${label}] Scribing ${turns.length} turns...`);
-  const summary = await summarize(turns, label);
-  if (!summary.trim()) return false;
+  const raw = await summarize(turns, label);
+  if (!raw.trim()) return false;
+
+  const entries = parseEntries(raw);
+  if (!entries.length) {
+    console.log(`  [${label}] No parseable entries — skipping.`);
+    return false;
+  }
 
   if (dryRun) {
-    console.log(`\n--- DRY RUN [${label}] ---\n${summary}\n--- END ---\n`);
+    console.log(`\n--- DRY RUN [${label}] (${entries.length} entries) ---`);
+    entries.forEach(e => console.log(`\nTITLE: ${e.title}\nCONTENT: ${e.content}`));
+    console.log('--- END ---\n');
   } else {
-    const file = appendToMemory(summary, label);
+    const file = appendToMemory(entries, label);
+    const smCount = await writeToSupermemory(entries, label);
     const lastEntry = turns[turns.length - 1];
     state[sessionId] = { lastIndex: lastEntry.index + 1, lastRunAt: new Date().toISOString(), label };
-    console.log(`  ✅ → ${file}`);
+    console.log(`  ✅ ${entries.length} entries → ${file}${smCount ? ` + ${smCount} to Supermemory` : ''}`);
   }
   return true;
 }
