@@ -222,7 +222,7 @@ async function llmRequest(prompt) {
 
 async function summarize(turns, label) {
   const conversation = turns.map(t => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`).join('\n\n');
-  const prompt = `You are a memory scribe for an AI agent. Extract key events, decisions, facts, and actions from this conversation excerpt. Write concise bullet points (10-20 max). Focus on: things created/built, decisions made, problems solved, important facts learned, notable exchanges. Skip small talk. Be specific and factual.
+  const prompt = `You are a memory scribe for an AI agent. Extract key events, decisions, facts, and actions from this conversation excerpt. Write concise bullet points — as many as needed to capture everything significant. Focus on: things created/built, decisions made, problems solved, important facts learned, notable exchanges. Skip small talk and filler. Be specific and factual.
 
 Session: ${label}
 
