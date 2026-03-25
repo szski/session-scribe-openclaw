@@ -12,12 +12,11 @@ Each line is a JSON object with a `type` field:
 | `session` | First line — session metadata (id, timestamp, cwd) |
 | `model_change` | Model switch event |
 | `thinking_level_change` | Thinking level change |
-| `user` | User message turn |
-| `assistant` | Assistant response turn |
-| `tool_use` | Tool call (embedded in assistant turns) |
-| `tool_result` | Tool result |
+| `message` | User or assistant turn — check `message.role` for `"user"` or `"assistant"` |
 | `compaction` | Compaction summary entry |
 | `custom` | System events (model snapshots, etc.) |
+
+> **Note:** Conversation turns use `type: "message"` (not `"user"` or `"assistant"`). The role is inside the nested `message.role` field. scribe.js filters on `entry.type === "message"` then reads `entry.message.role`.
 
 ## User entry
 ```json

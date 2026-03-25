@@ -16,6 +16,10 @@ Reads OpenClaw session transcripts and writes summarized bullet points to a dail
 
 No gateway involvement. No context bloat. Just cheap, reliable scribing.
 
+## ⚠️ Privacy notice
+
+This skill sends conversation transcript content to an external LLM (OpenAI or Anthropic). If your sessions contain secrets, API keys, PII, or sensitive data — be aware that content will be sent to the provider for summarization. Use a dedicated low-privilege API key with spend limits, and consider running `--dry-run` first to see exactly what gets sent.
+
 ## How it works
 
 1. Reads `<sessions-dir>/<session-id>.jsonl` for new entries since last run
@@ -65,20 +69,24 @@ node scripts/scribe.js \
 Add to crontab (`crontab -e`) to run every hour:
 
 ```bash
-# OpenAI (recommended — cheaper)
-0 * * * * OPENAI_API_KEY=your-key node /path/to/session-scribe/scripts/scribe.js \
+# Store your key in a protected file (do NOT inline secrets in crontab)
+echo "sk-your-key" > ~/.openclaw/secrets/scribe-key
+chmod 600 ~/.openclaw/secrets/scribe-key
+
+# Single session (via key file)
+0 * * * * node /path/to/session-scribe/scripts/scribe.js \
   --sessions ~/.openclaw/agents/main/sessions \
   --auto-session "discord:channel:YOUR_CHANNEL_ID" \
   --memory-dir ~/.openclaw/workspace/memory \
-  --agent my-agent \
+  --api-key-file ~/.openclaw/secrets/scribe-key \
   >> /tmp/scribe.log 2>&1
 
-# Anthropic alternative
-0 * * * * ANTHROPIC_API_KEY=your-key node /path/to/session-scribe/scripts/scribe.js \
-  --sessions ~/.openclaw/agents/main/sessions \
-  --auto-session "discord:channel:YOUR_CHANNEL_ID" \
+# All sessions across all agents
+0 * * * * node /path/to/session-scribe/scripts/scribe.js \
+  --agents-dir ~/.openclaw/agents \
+  --all-sessions \
   --memory-dir ~/.openclaw/workspace/memory \
-  --provider anthropic --model claude-haiku-4-5 \
+  --api-key-file ~/.openclaw/secrets/scribe-key \
   >> /tmp/scribe.log 2>&1
 ```
 
